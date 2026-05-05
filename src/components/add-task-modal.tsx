@@ -24,7 +24,12 @@ import { Spacing } from '@/constants/theme';
 export interface AddTaskModalProps {
   visible: boolean;
   onClose: () => void;
+  /** Create: called when user saves a new task (Requirements §2.2). */
   onSubmit: (task: NewTaskForm) => void;
+  /** Edit: when set with `initialDraft`, modal pre-fills and calls `onSaveEdit` instead of `onSubmit`. */
+  editingTaskId?: string | null;
+  initialDraft?: NewTaskForm | null;
+  onSaveEdit?: (id: string, task: NewTaskForm) => void;
 }
 
 interface FieldErrors {
@@ -39,19 +44,34 @@ const PRIORITY_LABELS: Record<PriorityLevel, string> = {
   low: 'Low',
 };
 
-export function AddTaskModal({ visible, onClose, onSubmit }: AddTaskModalProps) {
+export function AddTaskModal({
+  visible,
+  onClose,
+  onSubmit,
+  editingTaskId,
+  initialDraft,
+  onSaveEdit,
+}: AddTaskModalProps) {
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState<CategoryId>('work');
   const [priority, setPriority] = useState<PriorityLevel>('medium');
   const [errors, setErrors] = useState<FieldErrors>({});
 
+  const isEdit = Boolean(editingTaskId && initialDraft);
+
   useEffect(() => {
     if (!visible) return;
-    setTitle('');
-    setCategoryId('work');
-    setPriority('medium');
+    if (isEdit && initialDraft) {
+      setTitle(initialDraft.title);
+      setCategoryId(initialDraft.categoryId);
+      setPriority(initialDraft.priority);
+    } else {
+      setTitle('');
+      setCategoryId('work');
+      setPriority('medium');
+    }
     setErrors({});
-  }, [visible]);
+  }, [visible, isEdit, initialDraft]);
 
   const handleSubmit = useCallback(() => {
     const parsed = newTaskFormSchema.safeParse({ title, categoryId, priority });
@@ -65,9 +85,13 @@ export function AddTaskModal({ visible, onClose, onSubmit }: AddTaskModalProps) 
       return;
     }
     setErrors({});
-    onSubmit(parsed.data);
+    if (isEdit && editingTaskId && onSaveEdit) {
+      onSaveEdit(editingTaskId, parsed.data);
+    } else {
+      onSubmit(parsed.data);
+    }
     onClose();
-  }, [categoryId, onClose, onSubmit, priority, title]);
+  }, [categoryId, editingTaskId, isEdit, onClose, onSaveEdit, onSubmit, priority, title]);
 
   const categoryChips = useMemo(
     () =>
@@ -136,7 +160,7 @@ export function AddTaskModal({ visible, onClose, onSubmit }: AddTaskModalProps) 
           style={styles.keyboard}>
           <Pressable style={styles.cardWrap} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.cardContent}>
-              <Text style={styles.modalTitle}>New task</Text>
+              <Text style={styles.modalTitle}>{isEdit ? 'Edit task' : 'New task'}</Text>
               <Text style={styles.label}>Task name</Text>
               <TextInput
                 value={title}
@@ -173,7 +197,7 @@ export function AddTaskModal({ visible, onClose, onSubmit }: AddTaskModalProps) 
                   style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel="Save task">
-                  <Text style={styles.primaryLabel}>Add task</Text>
+                  <Text style={styles.primaryLabel}>{isEdit ? 'Save changes' : 'Add task'}</Text>
                 </Pressable>
               </View>
             </ScrollView>

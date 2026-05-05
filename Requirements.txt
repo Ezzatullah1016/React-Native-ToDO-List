@@ -1,0 +1,115 @@
+React Native Todo List App (Expo) – Basic Requirements Specification
+1. Project Overview
+
+Develop a basic Todo List mobile application using Expo and React Native that allows users to create, manage, update, and delete daily tasks. The app should focus on simplicity, usability, and mobile-friendly performance for Android (and optionally iOS).
+
+2. Functional Requirements
+Core Features
+2.1 User Interface
+Home screen displaying all todo tasks
+Input field to add new tasks
+Add Task button
+Task list using scrollable view
+Edit task option
+Delete task option
+Mark task as completed/incomplete
+Basic responsive mobile layout
+2.2 Task Management
+Create new task
+Update/edit existing task
+Delete task
+Toggle task completion status
+Display completed tasks differently (e.g., strike-through text)
+2.3 Local Data Storage
+Store tasks locally using:
+AsyncStorage (@react-native-async-storage/async-storage)
+Persist tasks even after app restart
+3. Non-Functional Requirements
+Performance
+Fast loading time
+Smooth scrolling
+Lightweight app size
+Usability
+Simple UI/UX
+Easy navigation
+Clear buttons and labels
+Compatibility
+Android devices (minimum Android 8+ recommended)
+Expo Go testing support
+4. Technical Requirements
+Development Tools
+Node.js
+npm or yarn
+Expo CLI
+VS Code
+Android Studio Emulator or Expo Go App
+Required Packages
+npx create-expo-app TodoApp
+cd TodoApp
+npm install @react-native-async-storage/async-storage
+npm install @expo/vector-icons
+5. Suggested Folder Structure
+TodoApp/
+│── App.js
+│── components/
+│   ├── TodoInput.js
+│   ├── TodoItem.js
+│── screens/
+│   ├── HomeScreen.js
+│── assets/
+│── package.json
+6. UI Components
+TextInput
+Button / TouchableOpacity
+FlatList
+View
+Text
+StyleSheet
+Alert
+7. Basic Screens
+Home Screen
+Add new todo
+View all todos
+Edit/Delete/Complete actions
+8. Validation Requirements
+Prevent empty task submission
+Show alert if task input is blank
+Confirm before deleting task (optional)
+9. Future Enhancements (Optional)
+Due dates
+Categories
+Dark mode
+Notifications
+Firebase sync
+User authentication
+10. Testing Requirements
+Add task test
+Delete task test
+Edit task test
+Persistent storage test
+UI responsiveness test
+11. Deployment
+Test using Expo Go
+Build APK:
+eas build -p android
+12. Estimated Development Phases
+Phase 1:
+Setup Expo project
+Build UI
+Phase 2:
+CRUD functionality
+Phase 3:
+Local storage integration
+Phase 4:
+Testing and deployment
+13. Deliverables
+Source code
+Functional Android app
+README documentation
+Screenshots
+14. Skills Required
+JavaScript (ES6)
+React Native basics
+Expo framework
+State management (useState)
+Local storage handling

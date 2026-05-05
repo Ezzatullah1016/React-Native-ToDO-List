@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { memo, useCallback, useMemo, useReducer, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -27,6 +28,7 @@ import {
   TASKFLOW_SIDEBAR_BREAKPOINT,
 } from '@/constants/taskflow';
 import { BottomTabInset, Spacing } from '@/constants/theme';
+import { loadPersistedTasks, savePersistedTasks } from '@/lib/task-storage';
 import type { NewTaskForm } from '@/lib/task-schema';
 
 const SIDEBAR_WIDTH = 272;
@@ -51,7 +53,9 @@ type TodoAction =
   | { type: 'add'; payload: NewTaskForm }
   | { type: 'toggle'; id: string }
   | { type: 'remove'; id: string }
-  | { type: 'toggleStar'; id: string };
+  | { type: 'toggleStar'; id: string }
+  | { type: 'hydrate'; payload: Task[] }
+  | { type: 'update'; id: string; payload: NewTaskForm };
 
 function createTodoId(): string {
   if (typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto) {
@@ -67,6 +71,12 @@ function startOfTodayMs(): number {
 }
 
 function todosReducer(state: Task[], action: TodoAction): Task[] {
+  if (action.type === 'hydrate') {
+    return action.payload;
+  }
+  if (action.type === 'update') {
+    return state.map((t) => (t.id === action.id ? { ...t, ...action.payload } : t));
+  }
   if (action.type === 'add') {
     const next: Task = {
       ...action.payload,
@@ -106,9 +116,10 @@ interface TaskCardProps {
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onToggleStar: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
-const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar }: TaskCardProps) {
+const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar, onEdit }: TaskCardProps) {
   const cat = getCategory(item.categoryId);
   const priorityColors: Record<PriorityLevel, { bg: string; text: string; label: string }> = {
     high: { bg: 'rgba(239,68,68,0.18)', text: '#FCA5A5', label: 'HIGH' },
@@ -146,6 +157,14 @@ const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar
             </View>
           </View>
           <View style={styles.taskActions}>
+            <Pressable
+              onPress={() => onEdit(item.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${item.title}`}
+              hitSlop={8}
+              style={({ pressed }) => [pressed && styles.pressed]}>
+              <Text style={styles.editGlyph}>✎</Text>
+            </Pressable>
             <Pressable
               onPress={() => onToggleStar(item.id)}
               accessibilityRole="button"
@@ -310,11 +329,37 @@ function StatCard({ label, value, hint, width }: StatCardProps) {
 
 export default function HomeScreen() {
   const [todos, dispatch] = useReducer(todosReducer, [] as Task[]);
+  const [storageReady, setStorageReady] = useState(false);
   const [nav, setNav] = useState<NavFilter>({ kind: 'all' });
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [addOpen, setAddOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [editing, setEditing] = useState<Task | null>(null);
+  const skipNextSave = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const loaded = await loadPersistedTasks();
+      if (cancelled) return;
+      skipNextSave.current = true;
+      dispatch({ type: 'hydrate', payload: loaded as Task[] });
+      setStorageReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+    void savePersistedTasks(todos);
+  }, [todos, storageReady]);
 
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -355,6 +400,14 @@ export default function HomeScreen() {
     if (!todos.length) return 0;
     return Math.round((completedCount / todos.length) * 100);
   }, [completedCount, todos.length]);
+
+  const editDraft = useMemo(
+    () =>
+      editing
+        ? { title: editing.title, categoryId: editing.categoryId, priority: editing.priority }
+        : null,
+    [editing],
+  );
   const urgentHigh = useMemo(
     () => todos.filter((t) => !t.completed && t.priority === 'high').length,
     [todos],
@@ -375,17 +428,40 @@ export default function HomeScreen() {
     dispatch({ type: 'add', payload });
   }, []);
 
+  const onSaveEditTask = useCallback((id: string, payload: NewTaskForm) => {
+    dispatch({ type: 'update', id, payload });
+    setEditing(null);
+  }, []);
+
   const handleToggle = useCallback((id: string) => {
     dispatch({ type: 'toggle', id });
   }, []);
 
-  const handleRemove = useCallback((id: string) => {
-    dispatch({ type: 'remove', id });
-  }, []);
+  const handleRemove = useCallback(
+    (id: string) => {
+      const t = todos.find((x) => x.id === id);
+      Alert.alert('Delete task', t ? `Remove "${t.title}"?` : 'Remove this task?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => dispatch({ type: 'remove', id }),
+        },
+      ]);
+    },
+    [todos],
+  );
 
   const handleToggleStar = useCallback((id: string) => {
     dispatch({ type: 'toggleStar', id });
   }, []);
+
+  const handleEdit = useCallback((id: string) => {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    setEditing(t);
+    setAddOpen(true);
+  }, [todos]);
 
   const listHeader = useMemo(
     () => (
@@ -539,6 +615,7 @@ export default function HomeScreen() {
             onToggle={handleToggle}
             onRemove={handleRemove}
             onToggleStar={handleToggleStar}
+            onEdit={handleEdit}
           />
         </View>
       )}
@@ -598,7 +675,17 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <AddTaskModal visible={addOpen} onClose={() => setAddOpen(false)} onSubmit={onSubmitTask} />
+      <AddTaskModal
+        visible={addOpen}
+        onClose={() => {
+          setAddOpen(false);
+          setEditing(null);
+        }}
+        onSubmit={onSubmitTask}
+        editingTaskId={editing?.id ?? null}
+        initialDraft={editDraft}
+        onSaveEdit={onSaveEditTask}
+      />
       {Platform.OS === 'web' && <WebBadge />}
     </View>
   );
@@ -1097,6 +1184,12 @@ const styles = StyleSheet.create({
   },
   starGlyphOn: {
     color: '#FBBF24',
+  },
+  editGlyph: {
+    color: TaskflowPalette.textMuted,
+    fontSize: 18,
+    fontWeight: '600',
+    paddingHorizontal: Spacing.one,
   },
   removeGlyph: {
     color: TaskflowPalette.textMuted,

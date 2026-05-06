@@ -1,5 +1,6 @@
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -19,6 +20,7 @@ import { AddTaskModal } from '@/components/add-task-modal';
 import { WebBadge } from '@/components/web-badge';
 import {
   CATEGORIES,
+  CATEGORY_IDS,
   type CategoryId,
   getCategory,
   getStatColumnCount,
@@ -28,18 +30,11 @@ import {
   TASKFLOW_SIDEBAR_BREAKPOINT,
 } from '@/constants/taskflow';
 import { BottomTabInset, Spacing } from '@/constants/theme';
-import { loadPersistedTasks, savePersistedTasks } from '@/lib/task-storage';
 import type { NewTaskForm } from '@/lib/task-schema';
+import { startOfTodayMs, type Task, useTodos } from '@/lib/todos-context';
 
 const SIDEBAR_WIDTH = 272;
 const STAT_GAP = 12;
-
-interface Task extends NewTaskForm {
-  id: string;
-  completed: boolean;
-  createdAt: number;
-  starred: boolean;
-}
 
 type NavFilter =
   | { kind: 'all' }
@@ -48,56 +43,6 @@ type NavFilter =
   | { kind: 'starred' };
 
 type SortMode = 'recent' | 'priority';
-
-type TodoAction =
-  | { type: 'add'; payload: NewTaskForm }
-  | { type: 'toggle'; id: string }
-  | { type: 'remove'; id: string }
-  | { type: 'toggleStar'; id: string }
-  | { type: 'hydrate'; payload: Task[] }
-  | { type: 'update'; id: string; payload: NewTaskForm };
-
-function createTodoId(): string {
-  if (typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function startOfTodayMs(): number {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-function todosReducer(state: Task[], action: TodoAction): Task[] {
-  if (action.type === 'hydrate') {
-    return action.payload;
-  }
-  if (action.type === 'update') {
-    return state.map((t) => (t.id === action.id ? { ...t, ...action.payload } : t));
-  }
-  if (action.type === 'add') {
-    const next: Task = {
-      ...action.payload,
-      id: createTodoId(),
-      completed: false,
-      createdAt: Date.now(),
-      starred: false,
-    };
-    return [next, ...state];
-  }
-  if (action.type === 'toggle') {
-    return state.map((t) => (t.id === action.id ? { ...t, completed: !t.completed } : t));
-  }
-  if (action.type === 'remove') {
-    return state.filter((t) => t.id !== action.id);
-  }
-  if (action.type === 'toggleStar') {
-    return state.map((t) => (t.id === action.id ? { ...t, starred: !t.starred } : t));
-  }
-  return state;
-}
 
 const PRIORITY_ORDER: Record<PriorityLevel, number> = { high: 0, medium: 1, low: 2 };
 
@@ -117,9 +62,10 @@ interface TaskCardProps {
   onRemove: (id: string) => void;
   onToggleStar: (id: string) => void;
   onEdit: (id: string) => void;
+  onOpen: (id: string) => void;
 }
 
-const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar, onEdit }: TaskCardProps) {
+const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar, onEdit, onOpen }: TaskCardProps) {
   const cat = getCategory(item.categoryId);
   const priorityColors: Record<PriorityLevel, { bg: string; text: string; label: string }> = {
     high: { bg: 'rgba(239,68,68,0.18)', text: '#FCA5A5', label: 'HIGH' },
@@ -142,7 +88,11 @@ const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar
             style={styles.radioOuter}>
             <View style={[styles.radioInner, item.completed && styles.radioInnerOn]} />
           </Pressable>
-          <View style={styles.taskTitleBlock}>
+          <Pressable
+            onPress={() => onOpen(item.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${item.title}`}
+            style={styles.taskTitleBlock}>
             <Text
               style={[styles.taskTitle, item.completed && styles.taskTitleDone]}
               numberOfLines={3}>
@@ -155,7 +105,7 @@ const TaskCard = memo(function TaskCard({ item, onToggle, onRemove, onToggleStar
                 <Text style={[styles.priorityPillText, { color: pc.text }]}>{pc.label}</Text>
               </View>
             </View>
-          </View>
+          </Pressable>
           <View style={styles.taskActions}>
             <Pressable
               onPress={() => onEdit(item.id)}
@@ -196,9 +146,10 @@ interface SidebarProps {
   onNav: (next: NavFilter) => void;
   onAdd: () => void;
   onCloseDrawer?: () => void;
+  onOpenSettings?: () => void;
 }
 
-function TaskflowSidebar({ todos, nav, onNav, onAdd, onCloseDrawer }: SidebarProps) {
+function TaskflowSidebar({ todos, nav, onNav, onAdd, onCloseDrawer, onOpenSettings }: SidebarProps) {
   const todayStart = startOfTodayMs();
   const todayCount = todos.filter((t) => t.createdAt >= todayStart).length;
   const starredCount = todos.filter((t) => t.starred).length;
@@ -302,7 +253,14 @@ function TaskflowSidebar({ todos, nav, onNav, onAdd, onCloseDrawer }: SidebarPro
         </Pressable>
       </View>
 
-      <Pressable style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]} accessibilityRole="button">
+      <Pressable
+        onPress={() => {
+          onOpenSettings?.();
+          onCloseDrawer?.();
+        }}
+        style={({ pressed }) => [styles.settingsRow, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Open settings">
         <Text style={styles.settingsGlyph}>⚙</Text>
         <Text style={styles.navItemText}>Settings</Text>
       </Pressable>
@@ -327,39 +285,37 @@ function StatCard({ label, value, hint, width }: StatCardProps) {
   );
 }
 
+function isCategoryId(value: string): value is CategoryId {
+  return (CATEGORY_IDS as readonly string[]).includes(value);
+}
+
 export default function HomeScreen() {
-  const [todos, dispatch] = useReducer(todosReducer, [] as Task[]);
-  const [storageReady, setStorageReady] = useState(false);
+  const { todos, addTask, updateTask, removeTask, toggleTask, toggleStar } = useTodos();
+  const params = useLocalSearchParams<{ filter?: string; id?: string }>();
   const [nav, setNav] = useState<NavFilter>({ kind: 'all' });
   const [search, setSearch] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [addOpen, setAddOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
-  const skipNextSave = useRef(false);
+  const lastAppliedParam = useRef<string>('');
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const loaded = await loadPersistedTasks();
-      if (cancelled) return;
-      skipNextSave.current = true;
-      dispatch({ type: 'hydrate', payload: loaded as Task[] });
-      setStorageReady(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    if (skipNextSave.current) {
-      skipNextSave.current = false;
-      return;
+    const filter = typeof params.filter === 'string' ? params.filter : '';
+    const filterId = typeof params.id === 'string' ? params.id : '';
+    const key = `${filter}:${filterId}`;
+    if (key === lastAppliedParam.current) return;
+    lastAppliedParam.current = key;
+    if (filter === 'category' && isCategoryId(filterId)) {
+      setNav({ kind: 'category', id: filterId });
+    } else if (filter === 'today') {
+      setNav({ kind: 'today' });
+    } else if (filter === 'starred') {
+      setNav({ kind: 'starred' });
+    } else if (filter === 'all') {
+      setNav({ kind: 'all' });
     }
-    void savePersistedTasks(todos);
-  }, [todos, storageReady]);
+  }, [params.filter, params.id]);
 
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -424,18 +380,27 @@ export default function HomeScreen() {
     setSortMode((m) => (m === 'recent' ? 'priority' : 'recent'));
   }, []);
 
-  const onSubmitTask = useCallback((payload: NewTaskForm) => {
-    dispatch({ type: 'add', payload });
-  }, []);
+  const onSubmitTask = useCallback(
+    (payload: NewTaskForm) => {
+      addTask(payload);
+    },
+    [addTask],
+  );
 
-  const onSaveEditTask = useCallback((id: string, payload: NewTaskForm) => {
-    dispatch({ type: 'update', id, payload });
-    setEditing(null);
-  }, []);
+  const onSaveEditTask = useCallback(
+    (id: string, payload: NewTaskForm) => {
+      updateTask(id, payload);
+      setEditing(null);
+    },
+    [updateTask],
+  );
 
-  const handleToggle = useCallback((id: string) => {
-    dispatch({ type: 'toggle', id });
-  }, []);
+  const handleToggle = useCallback(
+    (id: string) => {
+      toggleTask(id);
+    },
+    [toggleTask],
+  );
 
   const handleRemove = useCallback(
     (id: string) => {
@@ -445,23 +410,33 @@ export default function HomeScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => dispatch({ type: 'remove', id }),
+          onPress: () => removeTask(id),
         },
       ]);
+    },
+    [todos, removeTask],
+  );
+
+  const handleToggleStar = useCallback(
+    (id: string) => {
+      toggleStar(id);
+    },
+    [toggleStar],
+  );
+
+  const handleEdit = useCallback(
+    (id: string) => {
+      const t = todos.find((x) => x.id === id);
+      if (!t) return;
+      setEditing(t);
+      setAddOpen(true);
     },
     [todos],
   );
 
-  const handleToggleStar = useCallback((id: string) => {
-    dispatch({ type: 'toggleStar', id });
+  const handleOpen = useCallback((id: string) => {
+    router.push({ pathname: '/task/[id]', params: { id } });
   }, []);
-
-  const handleEdit = useCallback((id: string) => {
-    const t = todos.find((x) => x.id === id);
-    if (!t) return;
-    setEditing(t);
-    setAddOpen(true);
-  }, [todos]);
 
   const listHeader = useMemo(
     () => (
@@ -616,6 +591,7 @@ export default function HomeScreen() {
             onRemove={handleRemove}
             onToggleStar={handleToggleStar}
             onEdit={handleEdit}
+            onOpen={handleOpen}
           />
         </View>
       )}
@@ -669,6 +645,7 @@ export default function HomeScreen() {
               onNav={setNav}
               onAdd={() => setAddOpen(true)}
               onCloseDrawer={() => setDrawerOpen(false)}
+              onOpenSettings={() => router.push('/settings')}
             />
           </View>
           <Pressable style={styles.drawerScrim} onPress={() => setDrawerOpen(false)} accessibilityLabel="Close menu" />

@@ -24,8 +24,8 @@ import { Spacing } from '@/constants/theme';
 export interface AddTaskModalProps {
   visible: boolean;
   onClose: () => void;
-  /** Create: called when user saves a new task (Requirements §2.2). */
-  onSubmit: (task: NewTaskForm) => void;
+  /** Create: called when user saves a new task (Requirements §2.2). Omit when modal is edit-only. */
+  onSubmit?: (task: NewTaskForm) => void;
   /** Edit: when set with `initialDraft`, modal pre-fills and calls `onSaveEdit` instead of `onSubmit`. */
   editingTaskId?: string | null;
   initialDraft?: NewTaskForm | null;
@@ -88,7 +88,7 @@ export function AddTaskModal({
     if (isEdit && editingTaskId && onSaveEdit) {
       onSaveEdit(editingTaskId, parsed.data);
     } else {
-      onSubmit(parsed.data);
+      onSubmit?.(parsed.data);
     }
     onClose();
   }, [categoryId, editingTaskId, isEdit, onClose, onSaveEdit, onSubmit, priority, title]);

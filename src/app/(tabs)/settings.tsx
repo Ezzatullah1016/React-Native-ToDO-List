@@ -1,7 +1,7 @@
 /**
  * PURPOSE: Settings tab — lets the user pick a theme mode (system/light/dark),
  *          clear all tasks (Requirements §8 confirm pattern), and view app info.
- * PLACEMENT: `src/app/settings.tsx` — tab route registered in `app-tabs.tsx`.
+ * PLACEMENT: `src/app/(tabs)/settings.tsx` — tab route in `(tabs)/_layout.tsx`.
  */
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const bottomInset = insets.bottom + BottomTabInset + Spacing.four;
   const { mode, setMode, resolved } = useThemeMode();
-  const { todos, clearAll } = useTodos();
+  const { todos, clearAll, activityLog } = useTodos();
 
   function confirmClearAll() {
     if (todos.length === 0) return;
@@ -102,6 +102,32 @@ export default function SettingsScreen() {
                 : `Clear all ${todos.length} tasks`}
             </Text>
           </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Recent activity</Text>
+          <Text style={styles.cardSub}>
+            In-app log of changes this session (not synced to a server). Requirements §9.
+          </Text>
+          {activityLog.length === 0 ? (
+            <Text style={styles.activityEmpty}>No activity yet — add or edit a task on Home.</Text>
+          ) : (
+            <View style={styles.activityList}>
+              {activityLog.map((entry) => (
+                <View key={entry.id} style={styles.activityRow}>
+                  <Text style={styles.activityTime}>
+                    {new Date(entry.at).toLocaleString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                  <Text style={styles.activityMessage}>{entry.message}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -190,6 +216,34 @@ const styles = StyleSheet.create({
   chipHint: {
     color: TaskflowPalette.textMuted,
     fontSize: 11,
+  },
+  activityEmpty: {
+    color: TaskflowPalette.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: Spacing.one,
+  },
+  activityList: {
+    marginTop: Spacing.two,
+    gap: Spacing.two,
+  },
+  activityRow: {
+    paddingVertical: Spacing.one,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: TaskflowPalette.border,
+    gap: 2,
+  },
+  activityTime: {
+    color: TaskflowPalette.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  activityMessage: {
+    color: TaskflowPalette.text,
+    fontSize: 14,
+    lineHeight: 20,
   },
   dangerBtn: {
     marginTop: Spacing.two,

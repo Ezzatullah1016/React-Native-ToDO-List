@@ -11,8 +11,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  View,
   useWindowDimensions,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,9 +25,9 @@ import {
   getCategory,
   getStatColumnCount,
   type PriorityLevel,
-  TaskflowPalette,
   TASKFLOW_MAX_MAIN_WIDTH,
   TASKFLOW_SIDEBAR_BREAKPOINT,
+  TaskflowPalette,
 } from '@/constants/taskflow';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import type { NewTaskForm } from '@/lib/task-schema';
@@ -482,7 +482,7 @@ export default function HomeScreen() {
             <Text style={styles.avatarText}>JD</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>John Doe</Text>
+            <Text style={styles.profileName}>Monica</Text>
             <View style={styles.proBadge}>
               <Text style={styles.proBadgeText}>Pro Member</Text>
             </View>

@@ -19,7 +19,8 @@ export function Collapsible({ children, title }: PropsWithChildren & { title: st
         onPress={() => setIsOpen((value) => !value)}>
         <ThemedView type="backgroundElement" style={styles.button}>
           <SymbolView
-            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            // expo-symbols typings are iOS-centric; per-platform names still work at runtime.
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' } as never}
             size={14}
             weight="bold"
             tintColor={theme.text}

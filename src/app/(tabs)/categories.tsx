@@ -3,7 +3,7 @@
  *          completion bar; tapping a row deep-links to Home filtered to that
  *          category via search params (Requirements §9 — Categories).
  * PLACEMENT: `src/app/categories.tsx` — top-level Expo Router route consumed
- *            by `<NativeTabs.Trigger name="categories">` in `app-tabs.tsx`.
+ *            by the Categories tab in `src/app/(tabs)/_layout.tsx`.
  */
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';

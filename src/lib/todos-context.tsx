@@ -22,56 +22,22 @@ import {
   type PersistedTask,
 } from '@/lib/task-storage';
 import type { NewTaskForm } from '@/lib/task-schema';
+import { createTodoId, todosReducer } from '@/lib/todos-reducer';
 
 export type Task = PersistedTask;
 
-type TodoAction =
-  | { type: 'add'; payload: NewTaskForm }
-  | { type: 'toggle'; id: string }
-  | { type: 'remove'; id: string }
-  | { type: 'toggleStar'; id: string }
-  | { type: 'hydrate'; payload: Task[] }
-  | { type: 'update'; id: string; payload: NewTaskForm }
-  | { type: 'clearAll' };
+const ACTIVITY_CAP = 50;
 
-function createTodoId(): string {
-  if (typeof globalThis.crypto !== 'undefined' && 'randomUUID' in globalThis.crypto) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function todosReducer(state: Task[], action: TodoAction): Task[] {
-  if (action.type === 'hydrate') return action.payload;
-  if (action.type === 'clearAll') return [];
-  if (action.type === 'update') {
-    return state.map((t) => (t.id === action.id ? { ...t, ...action.payload } : t));
-  }
-  if (action.type === 'add') {
-    const next: Task = {
-      ...action.payload,
-      id: createTodoId(),
-      completed: false,
-      createdAt: Date.now(),
-      starred: false,
-    };
-    return [next, ...state];
-  }
-  if (action.type === 'toggle') {
-    return state.map((t) => (t.id === action.id ? { ...t, completed: !t.completed } : t));
-  }
-  if (action.type === 'remove') {
-    return state.filter((t) => t.id !== action.id);
-  }
-  if (action.type === 'toggleStar') {
-    return state.map((t) => (t.id === action.id ? { ...t, starred: !t.starred } : t));
-  }
-  return state;
+export interface ActivityEntry {
+  id: string;
+  at: number;
+  message: string;
 }
 
 interface TodosContextValue {
   todos: Task[];
   hydrated: boolean;
+  activityLog: ActivityEntry[];
   addTask: (payload: NewTaskForm) => void;
   updateTask: (id: string, payload: NewTaskForm) => void;
   removeTask: (id: string) => void;
@@ -86,7 +52,14 @@ const TodosContext = createContext<TodosContextValue | null>(null);
 export function TodosProvider({ children }: { children: React.ReactNode }) {
   const [todos, dispatch] = useReducer(todosReducer, [] as Task[]);
   const [hydrated, setHydrated] = useState(false);
+  const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const skipNextSave = useRef(false);
+
+  const appendActivity = useCallback((message: string) => {
+    setActivityLog((prev) =>
+      [{ id: createTodoId(), at: Date.now(), message }, ...prev].slice(0, ACTIVITY_CAP),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,38 +84,73 @@ export function TodosProvider({ children }: { children: React.ReactNode }) {
     void savePersistedTasks(todos);
   }, [todos, hydrated]);
 
-  const addTask = useCallback((payload: NewTaskForm) => {
-    dispatch({ type: 'add', payload });
-  }, []);
+  const addTask = useCallback(
+    (payload: NewTaskForm) => {
+      dispatch({ type: 'add', payload });
+      appendActivity(`Added “${payload.title.trim()}”`);
+    },
+    [appendActivity],
+  );
 
-  const updateTask = useCallback((id: string, payload: NewTaskForm) => {
-    dispatch({ type: 'update', id, payload });
-  }, []);
+  const updateTask = useCallback(
+    (id: string, payload: NewTaskForm) => {
+      const prev = todos.find((t) => t.id === id);
+      dispatch({ type: 'update', id, payload });
+      const label = prev?.title ?? 'Task';
+      appendActivity(`Updated “${label}” → “${payload.title.trim()}”`);
+    },
+    [appendActivity, todos],
+  );
 
-  const removeTask = useCallback((id: string) => {
-    dispatch({ type: 'remove', id });
-  }, []);
+  const removeTask = useCallback(
+    (id: string) => {
+      const prev = todos.find((t) => t.id === id);
+      dispatch({ type: 'remove', id });
+      if (prev) appendActivity(`Removed “${prev.title}”`);
+    },
+    [appendActivity, todos],
+  );
 
-  const toggleTask = useCallback((id: string) => {
-    dispatch({ type: 'toggle', id });
-  }, []);
+  const toggleTask = useCallback(
+    (id: string) => {
+      const prev = todos.find((t) => t.id === id);
+      dispatch({ type: 'toggle', id });
+      if (prev) {
+        appendActivity(
+          prev.completed ? `Reopened “${prev.title}”` : `Completed “${prev.title}”`,
+        );
+      }
+    },
+    [appendActivity, todos],
+  );
 
-  const toggleStar = useCallback((id: string) => {
-    dispatch({ type: 'toggleStar', id });
-  }, []);
+  const toggleStar = useCallback(
+    (id: string) => {
+      const prev = todos.find((t) => t.id === id);
+      dispatch({ type: 'toggleStar', id });
+      if (prev) {
+        appendActivity(prev.starred ? `Unstarred “${prev.title}”` : `Starred “${prev.title}”`);
+      }
+    },
+    [appendActivity, todos],
+  );
 
   const clearAll = useCallback(() => {
     dispatch({ type: 'clearAll' });
-  }, []);
+    appendActivity('Cleared all tasks');
+  }, [appendActivity]);
 
   const clearCompleted = useCallback(() => {
-    todos.filter((t) => t.completed).forEach((t) => dispatch({ type: 'remove', id: t.id }));
-  }, [todos]);
+    const done = todos.filter((t) => t.completed);
+    done.forEach((t) => dispatch({ type: 'remove', id: t.id }));
+    if (done.length > 0) appendActivity(`Cleared ${done.length} completed task(s)`);
+  }, [appendActivity, todos]);
 
   const value = useMemo<TodosContextValue>(
     () => ({
       todos,
       hydrated,
+      activityLog,
       addTask,
       updateTask,
       removeTask,
@@ -154,6 +162,7 @@ export function TodosProvider({ children }: { children: React.ReactNode }) {
     [
       todos,
       hydrated,
+      activityLog,
       addTask,
       updateTask,
       removeTask,

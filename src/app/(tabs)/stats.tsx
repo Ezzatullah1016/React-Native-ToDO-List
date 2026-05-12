@@ -2,7 +2,7 @@
  * PURPOSE: Stats tab — read-only analytics over the same todo state
  *          (Requirements §6/§9): completion rate, breakdown by category and
  *          priority, plus a "Clear completed" maintenance action.
- * PLACEMENT: `src/app/stats.tsx` — tab route registered in `app-tabs.tsx`.
+ * PLACEMENT: `src/app/(tabs)/stats.tsx` — tab route in `(tabs)/_layout.tsx`.
  */
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo } from 'react';
